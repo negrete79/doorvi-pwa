@@ -616,15 +616,15 @@
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <script>
         // Configuração
-        const unitId = "Casa 155";
+        const unitId = "Casa 155"; // ID ÚNICO para este morador. Deve ser exclusivo.
         const residentName = "Elias Costa";
         
-        // Elementos
-        const connectionStatus = document.getElementById('connectionStatus');
-        const statusIndicator = document.getElementById('statusIndicator');
+        // Elementos da UI
+        const connectionStatusEl = document.getElementById('connectionStatus');
+        const statusIndicatorEl = document.getElementById('statusIndicator');
         const unitIdSpan = document.getElementById('unitId');
         const peerIdSpan = document.getElementById('peerId');
-        const notification = document.getElementById('notification');
+        const notificationEl = document.getElementById('notification');
         const visitorNameDisplay = document.getElementById('visitorNameDisplay');
         const deliveryTypeDisplay = document.getElementById('deliveryTypeDisplay');
         const callerUnit = document.getElementById('callerUnit');
@@ -639,7 +639,7 @@
         const micBtn = document.getElementById('micBtn');
         const videoBtn = document.getElementById('videoBtn');
         
-        // Variáveis
+        // Variáveis de estado
         let localStream;
         let currentCall;
         let peer;
@@ -647,7 +647,12 @@
         let isVideoDisabled = false;
         let ringtoneInterval;
         
-        // Funções existentes
+        // --- FUNÇÕES AUXILIARES ---
+
+        function log(message) {
+            console.log('[Doorvi Morador]', message);
+        }
+
         function createParticles() {
             const particlesContainer = document.getElementById('particles');
             const particleCount = 50;
@@ -666,10 +671,6 @@
             }
         }
         
-        function log(message) {
-            console.log('[Doorvi]', message);
-        }
-        
         function generateQR() {
             const qrContainer = document.getElementById('qrCode');
             const baseUrl = window.location.href.replace('morador.html', '');
@@ -680,7 +681,7 @@
                 colorDark: "#000000", colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.H
             });
-            log('QR Code gerado: ' + visitUrl);
+            log('QR Code gerado para: ' + visitUrl);
         }
         
         function playPhoneRingtone() {
@@ -708,7 +709,6 @@
                     }
                     currentTime += note.duration / 1000;
                 });
-                log('Toque de telefone iniciado');
             } catch (e) {
                 log('Erro ao tocar toque: ' + e.message);
             }
@@ -730,6 +730,8 @@
             }
         }
         
+        // --- LÓGICA DE CHAMADA E MÍDIA ---
+
         async function initMediaDevices() {
             try {
                 log('Solicitando acesso à câmera e microfone...');
@@ -739,14 +741,14 @@
                 return true;
             } catch (err) {
                 log('Erro ao acessar dispositivos de mídia: ' + err.message);
-                alert('Não foi possível acessar a câmera e o microfone. Verifique as permissões.');
+                alert('Não foi possível acessar a câmera e o microfone. Verifique as permissões do navegador.');
                 return false;
             }
         }
-        
+
         function stopMediaDevices() {
             if (localStream) {
-                localStream.getTracks().forEach(track => { track.stop(); log('Parando track: ' + track.kind); });
+                localStream.getTracks().forEach(track => track.stop());
                 localStream = null;
             }
             if (localVideo.srcObject) {
@@ -757,8 +759,11 @@
         
         function endCall() {
             log('Encerrando chamada');
+            if (currentCall) {
+                currentCall.close();
+            }
             if (remoteVideo.srcObject) {
-                remoteVideo.srcObject.getTracks().forEach(track => { track.stop(); log('Parando track: ' + track.kind); });
+                remoteVideo.srcObject.getTracks().forEach(track => track.stop());
                 remoteVideo.srcObject = null;
             }
             stopMediaDevices();
@@ -766,52 +771,79 @@
             waitingScreen.style.display = 'block';
         }
 
-        function handleIncomingCall(data) {
-            const { visitorName, deliveryType, visitorPeerId } = data;
-            log(`Chamada recebida de: ${visitorName} (${visitorPeerId})`);
+        /**
+         * LIDA COM CHAMADAS RECEBIDAS
+         * CORREÇÃO: A função agora recebe o objeto 'call' diretamente do PeerJS.
+         */
+        function handleIncomingCall(call) {
+            log('Chamada recebida de: ' + call.peer);
 
-            notification.style.display = 'block';
+            // CORREÇÃO: Acessa os metadados enviados pelo visitante
+            const metadata = call.metadata || {};
+            const { visitorName, deliveryType } = metadata;
+
+            // Atualiza a UI com as informações do visitante
+            notificationEl.style.display = 'block';
             waitingScreen.style.display = 'none';
-            visitorNameDisplay.textContent = visitorName;
-            deliveryTypeDisplay.textContent = deliveryType;
-            callerUnit.textContent = visitorPeerId;
-            startRingtone();
-            currentCall = peer.call(visitorPeerId, localStream);
+            visitorNameDisplay.textContent = visitorName || 'Visitante Anônimo';
+            deliveryTypeDisplay.textContent = deliveryType || 'Não especificado';
+            callerUnit.textContent = call.peer; // Mostra o ID do Peer do visitante
             
+            startRingtone();
+            
+            // Armazena a chamada atual para uso nos botões
+            currentCall = call;
+            
+            // Lógica para o botão "Atender"
             acceptBtn.onclick = async () => {
                 log('Atendendo chamada...');
                 stopRingtone();
-                notification.style.display = 'none';
-                const mediaOk = await initMediaDevices();
-                if (!mediaOk) { waitingScreen.style.display = 'block'; return; }
+                notificationEl.style.display = 'none';
                 
-                remoteVideoLabel.textContent = visitorName;
+                // CORREÇÃO: Inicia a mídia apenas quando o usuário atende
+                const mediaOk = await initMediaDevices();
+                if (!mediaOk) {
+                    // Se a mídia falhar, rejeita a chamada e volta ao estado de espera
+                    call.close();
+                    waitingScreen.style.display = 'block';
+                    return;
+                }
+                
+                remoteVideoLabel.textContent = visitorName || 'Visitante';
                 videoContainer.style.display = 'block';
                 
-                currentCall.on('stream', (stream) => {
-                    log('Stream recebido do visitante');
-                    const videoTracks = stream.getVideoTracks();
-                    if (videoTracks.length > 0) {
-                        remoteVideo.srcObject = stream;
-                        remoteVideo.onloadedmetadata = () => remoteVideo.play().catch(e => log('Erro ao reproduzir vídeo: ' + e.message));
-                    } else { log('Nenhum track de vídeo recebido'); }
+                // CORREÇÃO: Responde à chamada recebida com o nosso stream de vídeo
+                call.answer(localStream);
+                
+                // Configura os eventos da chamada
+                call.on('stream', (remoteStream) => {
+                    log('Stream de vídeo recebido do visitante');
+                    remoteVideo.srcObject = remoteStream;
                 });
                 
-                currentCall.on('close', () => { log('Chamada encerrada'); endCall(); });
-                currentCall.on('error', (err) => { log(`Erro na chamada: ${err.message}`); endCall(); });
+                call.on('close', () => {
+                    log('Chamada encerrada pelo visitante');
+                    endCall();
+                });
+                
+                call.on('error', (err) => {
+                    log(`Erro na chamada: ${err.message}`);
+                    endCall();
+                });
             };
 
+            // Lógica para o botão "Recusar"
             rejectBtn.onclick = () => {
                 log('Recusando chamada');
                 stopRingtone();
-                currentCall.close();
-                notification.style.display = 'none';
+                call.close(); // Fecha a chamada recebida
+                notificationEl.style.display = 'none';
                 waitingScreen.style.display = 'block';
             };
         }
 
         function initPeer() {
-            log('Inicializando PeerJS...');
+            log('Inicializando PeerJS com ID: ' + unitId);
             peer = new Peer(unitId, { 
                 debug: 2,
                 config: {
@@ -832,61 +864,62 @@
             });
             
             peer.on('open', (id) => {
-                log(`Conectado com ID: ${id}`);
-                statusIndicator.classList.add('online');
+                log(`Conectado ao servidor PeerJS com ID: ${id}`);
+                connectionStatusEl.textContent = 'Online';
+                statusIndicatorEl.classList.add('online');
                 peerIdSpan.textContent = id;
                 generateQR();
             });
             
             peer.on('error', (err) => {
                 log(`Erro de Conexão: ${err.type} - ${err.message}`);
-                connectionStatus.textContent = '❌ Erro de conexão';
-                statusIndicator.classList.remove('online');
+                connectionStatusEl.textContent = '❌ Erro de conexão';
+                statusIndicatorEl.classList.remove('online');
             });
             
+            // CORREÇÃO: Define o manipulador para o evento 'call'
             peer.on('call', handleIncomingCall);
         }
         
-        endCallBtn.addEventListener('click', () => { if (currentCall) { currentCall.close(); } endCall(); });
+        // --- EVENT LISTENERS DA UI ---
+        
+        endCallBtn.addEventListener('click', () => {
+            if (currentCall) {
+                currentCall.close();
+            }
+            endCall();
+        });
         
         micBtn.addEventListener('click', () => {
             if (localStream) {
-                const audioTracks = localStream.getAudioTracks();
-                if (audioTracks.length > 0) {
-                    isMicMuted = !isMicMuted;
-                    audioTracks[0].enabled = !isMicMuted;
-                    micBtn.classList.toggle('muted', isMicMuted);
-                    micBtn.innerHTML = isMicMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
-                }
+                isMicMuted = !isMicMuted;
+                localStream.getAudioTracks()[0].enabled = !isMicMuted;
+                micBtn.classList.toggle('muted', isMicMuted);
+                micBtn.innerHTML = isMicMuted ? '<i class="fas fa-microphone-slash"></i>' : '<i class="fas fa-microphone"></i>';
             }
         });
         
         videoBtn.addEventListener('click', () => {
             if (localStream) {
-                const videoTracks = localStream.getVideoTracks();
-                if (videoTracks.length > 0) {
-                    isVideoDisabled = !isVideoDisabled;
-                    videoTracks[0].enabled = !isVideoDisabled;
-                    videoBtn.classList.toggle('disabled', isVideoDisabled);
-                    videoBtn.innerHTML = isVideoDisabled ? '<i class="fas fa-video-slash"></i>' : '<i class="fas fa-video"></i>';
-                }
+                isVideoDisabled = !isVideoDisabled;
+                localStream.getVideoTracks()[0].enabled = !isVideoDisabled;
+                videoBtn.classList.toggle('disabled', isVideoDisabled);
+                videoBtn.innerHTML = isVideoDisabled ? '<i class="fas fa-video-slash"></i>' : '<i class="fas fa-video"></i>';
             }
         });
+
+        // --- INICIALIZAÇÃO ---
         
-        window.addEventListener('load', async () => {
-            log('Iniciando sistema...');
+        window.addEventListener('load', () => {
+            log('Iniciando sistema Doorvi...');
             unitIdSpan.textContent = unitId;
             createParticles();
             
             // Registrar Service Worker para PWA
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('/sw.js')
-                    .then(registration => {
-                        console.log('Service Worker registrado com sucesso:', registration);
-                    })
-                    .catch(error => {
-                        console.log('Falha ao registrar Service Worker:', error);
-                    });
+                    .then(registration => log('Service Worker registrado com sucesso.'))
+                    .catch(error => log('Falha ao registrar Service Worker: ' + error));
             }
             
             // Configurar banner de instalação PWA
@@ -904,14 +937,14 @@
                     deferredPrompt.prompt();
                     deferredPrompt.userChoice.then((choiceResult) => {
                         if (choiceResult.outcome === 'accepted') {
-                            console.log('Usuário aceitou a instalação');
+                            log('Usuário aceitou a instalação do PWA');
                         }
                         deferredPrompt = null;
                     });
                 }
                 installBanner.classList.remove('show');
             });
-            
+
             initPeer();
         });
     </script>

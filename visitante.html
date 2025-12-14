@@ -102,7 +102,28 @@
 
                 <p>Por favor, digite seu nome para chamar:</p>
                 <input type="text" id="visitorNameInput" class="visitor-name-input" placeholder="Ex-Elias" maxlength="30">
-                <br>
+                
+                <div class="form-group">
+                    <label>Motivo da visita:</label>
+                    <div class="delivery-options">
+                        <label class="delivery-option">
+                            <input type="radio" name="deliveryType" value="Entrega" checked>
+                            <span class="radio-custom"></span>
+                            <span>Entrega</span>
+                        </label>
+                        <label class="delivery-option">
+                            <input type="radio" name="deliveryType" value="Visita">
+                            <span class="radio-custom"></span>
+                            <span>Visita</span>
+                        </label>
+                        <label class="delivery-option">
+                            <input type="radio" name="deliveryType" value="Serviço">
+                            <span class="radio-custom"></span>
+                            <span>Serviço</span>
+                        </label>
+                    </div>
+                </div>
+                
                 <button class="btn btn-call" id="callBtn">
                     <i class="fas fa-video"></i>
                     Iniciar Chamada
@@ -152,6 +173,7 @@
         const endCallBtn = document.getElementById('endCallBtn');
         
         let localStream, currentCall, peer;
+        let visitorPeerId = null; // Adicionado para armazenar o ID do visitante
         
         const urlParams = new URLSearchParams(window.location.search);
         const unitId = urlParams.get('unit');
@@ -180,7 +202,7 @@
             errorMessage.textContent = '';
         }
 
-        // NOVO: Função para obter o motivo da visita
+        // Função para obter o motivo da visita
         function getDeliveryType() {
             const selectedRadio = document.querySelector('input[name="deliveryType"]:checked');
             return selectedRadio ? selectedRadio.value : 'Pessoal';
@@ -188,7 +210,7 @@
 
         async function startCallAttempt() {
             const visitorName = visitorNameInput.value.trim() || "Visitante Anônimo";
-            const deliveryType = getDeliveryType(); // Pega o motivo selecionado
+            const deliveryType = getDeliveryType();
             
             startScreen.style.display = 'none';
             callingScreen.style.display = 'block';
@@ -199,18 +221,44 @@
                 localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 
                 statusMessage.textContent = 'Conectando...';
-                peer = new Peer({ config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } });
                 
-                peer.on('open', () => {
+                // CORREÇÃO: Inicializar o Peer com a mesma configuração do morador
+                peer = new Peer({ 
+                    debug: 2,
+                    config: {
+                        iceServers: [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { 
+                                urls: 'turn:openrelay.metered.ca:80', 
+                                username: 'openrelayproject', 
+                                credential: 'openrelayproject' 
+                            },
+                            { 
+                                urls: 'turn:openrelay.metered.ca:443', 
+                                username: 'openrelayproject', 
+                                credential: 'openrelayproject' 
+                            }
+                        ]
+                    } 
+                });
+                
+                peer.on('open', (id) => {
+                    visitorPeerId = id; // Armazenar o ID do visitante
                     statusMessage.textContent = 'Chamando...';
+                    
+                    // CORREÇÃO: Incluir o visitorPeerId nos metadados
                     currentCall = peer.call(unitId, localStream, { 
                         metadata: { 
                             visitorName: visitorName,
-                            deliveryType: deliveryType // NOVO: Envia o motivo junto com os metadados
+                            deliveryType: deliveryType,
+                            visitorPeerId: id // Adicionando o ID do visitante
                         } 
                     });
                     
-                    if (!currentCall) { showError("Não foi possível iniciar a chamada."); return; }
+                    if (!currentCall) { 
+                        showError("Não foi possível iniciar a chamada."); 
+                        return; 
+                    }
                     
                     currentCall.on('stream', (remoteStream) => {
                         statusMessage.textContent = 'Chamada conectada!';
@@ -222,7 +270,10 @@
                     });
                     
                     currentCall.on('close', () => { endCall(); });
-                    currentCall.on('error', (err) => { showError("Falha na chamada. O morador pode estar offline."); });
+                    currentCall.on('error', (err) => { 
+                        console.error('Erro na chamada:', err);
+                        showError("Falha na chamada. O morador pode estar offline."); 
+                    });
                     
                     setTimeout(() => {
                         if (currentCall && currentCall.open === false) {
@@ -231,9 +282,13 @@
                     }, 30000);
                 });
                 
-                peer.on('error', (err) => { showError("Erro de conexão. Verifique sua internet."); });
+                peer.on('error', (err) => { 
+                    console.error('Erro no Peer:', err);
+                    showError("Erro de conexão. Verifique sua internet."); 
+                });
                 
             } catch (err) {
+                console.error('Erro ao acessar dispositivos:', err);
                 showError('Permissão de câmera/microfone negada.');
             }
         }
