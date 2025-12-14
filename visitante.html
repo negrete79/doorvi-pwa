@@ -99,8 +99,14 @@
                     <span class="resident-name" id="residentName">--</span><br>
                     <span class="unit-name" id="unitName">--</span>
                 </div>
+
                 <div class="form-group">
-                    <label>Selecione o motivo da visita:</label>
+                    <label for="visitorNameInput">Seu nome:</label>
+                    <input type="text" id="visitorNameInput" class="visitor-name-input" placeholder="Ex: João" maxlength="30">
+                </div>
+
+                <div class="form-group">
+                    <label for="deliveryType">Motivo da visita:</label>
                     <div class="delivery-options">
                         <label class="delivery-option">
                             <input type="radio" name="deliveryType" value="Pessoal" checked>
@@ -119,9 +125,7 @@
                         </label>
                     </div>
                 </div>
-                <p>Por favor, digite seu nome para chamar:</p>
-                <input type="text" id="visitorNameInput" class="visitor-name-input" placeholder="Seu nome" maxlength="30">
-                <br>
+                
                 <button class="btn btn-call" id="callBtn">
                     <i class="fas fa-video"></i>
                     Iniciar Chamada
@@ -183,6 +187,19 @@
             residentNameEl.textContent = residentName;
             unitNameEl.textContent = `Unidade: ${unitId}`;
         }
+
+        // NOVO: Tenta carregar o nome salvo no localStorage
+        const savedName = localStorage.getItem('visitorName');
+        if (savedName) {
+            visitorNameInput.value = savedName;
+        }
+
+        function saveName() {
+            const name = visitorNameInput.value.trim();
+            if (name) {
+                localStorage.setItem('visitorName', name);
+            }
+        }
         
         function cleanup() {
             if (currentCall) { currentCall.close(); currentCall = null; }
@@ -205,6 +222,9 @@
         }
 
         async function startCallAttempt() {
+            // NOVO: Salva o nome antes de iniciar a chamada
+            saveName();
+
             const visitorName = visitorNameInput.value.trim() || "Visitante Anônimo";
             const deliveryType = getDeliveryType();
             
@@ -240,7 +260,7 @@
                     currentCall = peer.call(unitId, localStream, { 
                         metadata: { 
                             visitorName: visitorName,
-                            deliveryType: deliveryType
+                            deliveryType: deliveryType // NOVO: Envia o motivo junto com os metadados
                         } 
                     });
                     
@@ -287,7 +307,18 @@
         callBtn.addEventListener('click', startCallAttempt);
         cancelBtn.addEventListener('click', () => { cleanup(); resetUI(); });
         endCallBtn.addEventListener('click', endCall);
-        window.addEventListener('load', () => { visitorNameInput.focus(); });
+        window.addEventListener('load', () => { 
+            // Focar no input de nome ao carregar a página
+            visitorNameInput.focus(); 
+            // Selecionar o tipo de entrega padrão se houver um salvo
+            const savedType = localStorage.getItem('deliveryType');
+            if (savedType) {
+                const radioToSelect = document.querySelector(`input[name="deliveryType"][value="${savedType}"]`);
+                if (radioToSelect) {
+                    radioToSelect.checked = true;
+                }
+            }
+        });
     </script>
 </body>
 </html>
