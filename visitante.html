@@ -33,7 +33,6 @@
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
             padding: 20px;
         }
 
@@ -82,7 +81,7 @@
             margin-bottom: 10px;
             font-size: 1.1em;
             color: var(--text-secondary);
-            font-weight: 600; /* Mais destaque */
+            font-weight: 600;
         }
 
         .visitor-name-input, .delivery-options {
@@ -267,7 +266,7 @@
 
                 <div class="form-group">
                     <label for="deliveryType">Motivo da visita:</label>
-                    <div class="display:flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
+                    <div class="delivery-options">
                         <label class="delivery-option">
                             <input type="radio" name="deliveryType" value="Pessoal" checked>
                             <span class="radio-custom"></span>
@@ -285,7 +284,7 @@
                         </label>
                     </div>
                 </div>
-
+                
                 <button class="btn btn-call" id="callBtn">
                     <i class="fas fa-video"></i>
                     Iniciar Chamada
@@ -345,20 +344,9 @@
             document.body.innerHTML = `<h1>Erro</h1><p>Link de chamada inválido. Verifique o QR Code.</p>`;
         } else {
             residentNameEl.textContent = residentName;
-            // NOVO: Preencher o nome salvo ao carregar a página
-            const savedName = localStorage.getItem('visitorName');
-            if (savedName) {
-                visitorNameInput.value = savedName;
-            }
+            unitNameEl.textContent = `Unidade: ${unitId}`;
         }
-
-        function saveName() {
-            const name = visitorNameInput.value.trim();
-            if (name) {
-                localStorage.setItem('visitorName', name);
-            }
-        }
-
+        
         function cleanup() {
             if (currentCall) { currentCall.close(); currentCall = null; }
             if (peer) { peer.destroy(); peer = null; }
@@ -367,12 +355,25 @@
 
         function resetUI() {
             startScreen.style.display = 'block';
-            callingScreen.style.display = 'display: none';
-            videoContainer.style.display = 'display: none';
+            callingScreen.style.display = 'none';
+            videoContainer.style.display = 'none';
             callBtn.disabled = false;
-            errorMessage.style.display = 'display: none';
+            errorMessage.style.display = 'none';
             errorMessage.textContent = '';
         }
+
+        // Salvar nome do visitante ao digitar
+        visitorNameInput.addEventListener('input', () => {
+            localStorage.setItem('visitorName', visitorNameInput.value);
+        });
+
+        // Carregar nome salvo ao carregar a página
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedName = localStorage.getItem('visitorName');
+            if (savedName) {
+                visitorNameInput.value = savedName;
+            }
+        });
 
         function getDeliveryType() {
             const selectedRadio = document.querySelector('input[name="deliveryType"]:checked');
@@ -386,28 +387,18 @@
             startScreen.style.display = 'none';
             callingScreen.style.display = 'block';
             callBtn.disabled = true;
-            
+
             try {
-                statusMessage.textContent = 'Solicitando acesso à câmera...';
-                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                statusMessage.textContent = 'Solicitando acesso à câmera e microfone...';
+                // FORÇAR O VÍDEO
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: false, 
+                    audio: true 
+                });
                 
                 statusMessage.textContent = 'Conectando...';
-                peer = new Peer({
-                    config: {
-                        iceServers: [
-                            { urls: 'stun:stun.l.google.com:19302' },
-                            { 
-                                urls: 'turn:openrelay.metered.ca:80', 
-                                username: 'openrelayproject', 
-                                credential: 'openrelayproject' 
-                            },
-                            { 
-                                urls: 'turn:openrelay.metered.ca:443', 
-                                username: 'openrelayproject', 
-                                credential: 'openrelayproject' 
-                            }
-                        ]
-                    }
+                peer = new Peer({ 
+                    config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] 
                 });
                 
                 peer.on('open', () => {
@@ -419,19 +410,23 @@
                         } 
                     });
                     
-                    if (!currentCall) { showError("Não foi possível iniciar a chamada."); return; }
+                    if (!currentCall) { 
+                        showError("Não foi possível iniciar a chamada."); return; 
+                    }
                     
                     currentCall.on('stream', (remoteStream) => {
                         statusMessage.textContent = 'Chamada conectada!';
                         errorMessage.style.display = 'none';
                         remoteVideo.srcObject = remoteStream;
                         remoteVideoLabel.textContent = residentName;
-                        callingScreen.style.display = 'display: none';
+                        callingScreen.style.display = 'none';
                         videoContainer.style.display = 'block';
                     });
                     
                     currentCall.on('close', () => { endCall(); });
-                    currentCall.on('error', (err) => { showError("Falha na chamada. O morador pode estar offline."); });
+                    currentCall.on('error', (err) => { 
+                        showError("Falha na chamada. O morador pode estar offline."); 
+                    });
                     
                     setTimeout(() => {
                         if (currentCall && currentCall.open === false) {
@@ -440,7 +435,9 @@
                     }, 30000);
                 });
                 
-                peer.on('error', (err) => { showError("Erro de conexão. Verifique sua internet."); });
+                peer.on('error', (err) => { 
+                    showError("Erro de conexão. Verifique sua internet."); 
+                });
                 
             } catch (err) {
                 showError('Permissão de câmera/microfone negada.');
@@ -462,10 +459,13 @@
         callBtn.addEventListener('click', startCallAttempt);
         cancelBtn.addEventListener('click', () => { cleanup(); resetUI(); });
         endCallBtn.addEventListener('click', endCall);
-        window.addEventListener('load', () => {
-            visitorNameInput.focus();
-            // Salvar o nome quando o usuário digitar
-            visitorNameInput.addEventListener('input', saveName);
+        window.addEventListener('DOMContentLoaded', () => { 
+            visitorNameInput.focus(); 
+            // Carrega o nome salvo ao carregar a página
+            const savedName = localStorage.getItem('visitorName');
+            if (savedName) {
+                visitorNameInput.value = savedName;
+            }
         });
     </script>
 </body>
