@@ -392,7 +392,7 @@
                 statusMessage.textContent = 'Solicitando acesso à câmera e microfone...';
                 // FORÇAR O VÍDEO
                 localStream = await navigator.mediaDevices.getUserMedia({ 
-                    video: false, 
+                    video: true, 
                     audio: true 
                 });
                 
