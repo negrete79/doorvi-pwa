@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chamando Doorvi</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #0a0e27; --accent-color: #00d4ff; --success-color: #2ecc71;
+            --danger-color: #e74c3c; --bg-gradient: linear-gradient(135deg, #0a0e27, #1a237e, #0a0e27);
+            --text-primary: #ffffff; --text-secondary: #b3c5ef; --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--bg-gradient); color: var(--text-primary); min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .container { width: 100%; max-width: 600px; text-align: center; }
+        .status-card {
+            background: var(--glass-bg); backdrop-filter: blur(10px); border-radius: 20px;
+            padding: 40px; border: 1px solid var(--glass-border); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        h1 { font-size: 2.5em; font-weight: 300; margin-bottom: 20px; }
+        .resident-info { margin: 30px 0; }
+        .resident-name { color: var(--accent-color); font-weight: bold; font-size: 1.8em; }
+        .unit-name { color: var(--text-secondary); font-size: 1.2em; }
+        .form-group { margin: 20px 0; }
+        .form-group label { display: block; margin-bottom: 10px; font-size: 1.1em; color: var(--text-secondary); }
+        .visitor-name-input, .delivery-options {
+            margin: 10px 0; padding: 10px; border-radius: 10px; border: 1px solid var(--glass-border);
+            background: rgba(255,255,255,0.1); color: white; font-size: 16px; width: 80%;
+        }
+        .visitor-name-input::placeholder { color: var(--text-secondary); }
+        .delivery-options { display: flex; justify-content: center; gap: 15px; flex-wrap: wrap; }
+        .delivery-option {
+            display: flex; align-items: center; gap: 5px; cursor: pointer;
+        }
+        .delivery-option input[type="radio"] { display: none; }
+        .delivery-option .radio-custom {
+            width: 20px; height: 20px; border: 2px solid var(--accent-color); border-radius: 50%;
+            position: relative; transition: all 0.3s;
+        }
+        .delivery-option input[type="radio"]:checked + .radio-custom {
+            background-color: var(--accent-color);
+        }
+        .delivery-option input[type="radio"]:checked + .radio-custom::after {
+            content: ''; position: absolute; top: 50%; left: 50%;
+            width: 8px; height: 8px; background: white; border-radius: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .btn {
+            padding: 15px 40px; border: none; border-radius: 50px; cursor: pointer;
+            font-size: 18px; font-weight: bold; transition: all 0.3s;
+            display: inline-flex; align-items: center; gap: 10px; margin: 10px;
+        }
+        .btn-call {
+            background: linear-gradient(135deg, var(--success-color), #27ae60); color: white;
+            box-shadow: 0 5px 15px rgba(46, 204, 113, 0.3);
+        }
+        .btn-call:hover:not(:disabled) {
+            transform: translateY(-3px); box-shadow: 0 8px 20px rgba(46, 204, 113, 0.4);
+        }
+        .btn-call:disabled { background: #555; cursor: not-allowed; opacity: 0.6; }
+        .btn-cancel {
+            background: linear-gradient(135deg, var(--danger-color), #c0392b); color: white;
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.3);
+        }
+        .btn-cancel:hover { transform: translateY(-3px); box-shadow: 0 8px 20px rgba(231, 76, 60, 0.4); }
+        .calling-state { display: none; margin-top: 30px; }
+        .status-icon {
+            font-size: 4em; margin: 20px 0; color: var(--accent-color); animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
+        .video-container { display: none; margin-top: 30px; }
+        .video-box {
+            background: #000; border-radius: 15px; overflow: hidden; position: relative;
+            width: 100%; aspect-ratio: 4/3; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        .video-label {
+            position: absolute; bottom: 15px; left: 15px; background: rgba(0, 0, 0, 0.7);
+            padding: 8px 15px; border-radius: 30px; font-size: 14px;
+        }
+        .error-message { color: var(--danger-color); margin-top: 20px; font-size: 1.1em; display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="status-card">
+            <h1>DOORVI</h1>
+            
+            <div id="startScreen">
+                <div class="resident-info">
+                    <span class="resident-name" id="residentName">--</span><br>
+                    <span class="unit-name" id="unitName">--</span>
+                </div>
+                <div class="form-group">
+                    <label>Selecione o motivo da visita:</label>
+                    <div class="delivery-options">
+                        <label class="delivery-option">
+                            <input type="radio" name="deliveryType" value="Pessoal" checked>
+                            <span class="radio-custom"></span>
+                            <i class="fas fa-user"></i> Pessoal
+                        </label>
+                        <label class="delivery-option">
+                            <input type="radio" name="deliveryType" value="Mercado Livre">
+                            <span class="radio-custom"></span>
+                            <i class="fas fa-truck"></i> Mercado Livre
+                        </label>
+                        <label class="delivery-option">
+                            <input type="radio" name="deliveryType" value="Shopee">
+                            <span class="radio-custom"></span>
+                            <i class="fas fa-shopping-bag"></i> Shopee
+                        </label>
+                    </div>
+                </div>
+                <p>Por favor, digite seu nome para chamar:</p>
+                <input type="text" id="visitorNameInput" class="visitor-name-input" placeholder="Seu nome" maxlength="30">
+                <br>
+                <button class="btn btn-call" id="callBtn">
+                    <i class="fas fa-video"></i>
+                    Iniciar Chamada
+                </button>
+            </div>
+            
+            <div class="calling-state" id="callingScreen">
+                <div class="status-icon">
+                    <i class="fas fa-phone-volume"></i>
+                </div>
+                <p id="statusMessage">Conectando...</p>
+                <div class="error-message" id="errorMessage"></div>
+                <button class="btn btn-cancel" id="cancelBtn">
+                    <i class="fas fa-phone-slash"></i>
+                    Cancelar
+                </button>
+            </div>
+            
+            <div class="video-container" id="videoContainer">
+                <div class="video-box">
+                    <video id="remoteVideo" autoplay playsinline></video>
+                    <div class="video-label">
+                        <span id="remoteVideoLabel">Morador</span>
+                    </div>
+                </div>
+                <button class="btn btn-cancel" id="endCallBtn">
+                    <i class="fas fa-phone-slash"></i>
+                    Encerrar Chamada
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const residentNameEl = document.getElementById('residentName');
+        const unitNameEl = document.getElementById('unitName');
+        const visitorNameInput = document.getElementById('visitorNameInput');
+        const callBtn = document.getElementById('callBtn');
+        const statusMessage = document.getElementById('statusMessage');
+        const errorMessage = document.getElementById('errorMessage');
+        const startScreen = document.getElementById('startScreen');
+        const callingScreen = document.getElementById('callingScreen');
+        const videoContainer = document.getElementById('videoContainer');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const remoteVideoLabel = document.getElementById('remoteVideoLabel');
+        const cancelBtn = document.getElementById('cancelBtn');
+        const endCallBtn = document.getElementById('endCallBtn');
+        
+        let localStream, currentCall, peer;
+        
+        const urlParams = new URLSearchParams(window.location.search);
+        const unitId = urlParams.get('unit');
+        const residentName = urlParams.get('resident');
+        
+        if (!unitId || !residentName) {
+            alert("Link de chamada inválido!");
+            document.body.innerHTML = `<h1>Erro</h1><p>Link de chamada inválido. Verifique o QR Code.</p>`;
+        } else {
+            residentNameEl.textContent = residentName;
+            unitNameEl.textContent = `Unidade: ${unitId}`;
+        }
+        
+        function cleanup() {
+            if (currentCall) { currentCall.close(); currentCall = null; }
+            if (peer) { peer.destroy(); peer = null; }
+            if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
+        }
+
+        function resetUI() {
+            startScreen.style.display = 'block';
+            callingScreen.style.display = 'none';
+            videoContainer.style.display = 'none';
+            callBtn.disabled = false;
+            errorMessage.style.display = 'none';
+            errorMessage.textContent = '';
+        }
+
+        function getDeliveryType() {
+            const selectedRadio = document.querySelector('input[name="deliveryType"]:checked');
+            return selectedRadio ? selectedRadio.value : 'Pessoal';
+        }
+
+        async function startCallAttempt() {
+            const visitorName = visitorNameInput.value.trim() || "Visitante Anônimo";
+            const deliveryType = getDeliveryType();
+            
+            startScreen.style.display = 'none';
+            callingScreen.style.display = 'block';
+            callBtn.disabled = true;
+
+            try {
+                statusMessage.textContent = 'Solicitando acesso à câmera...';
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                
+                statusMessage.textContent = 'Conectando...';
+                peer = new Peer({
+                    config: {
+                        iceServers: [
+                            { urls: 'stun:stun.l.google.com:19302' },
+                            { 
+                                urls: 'turn:openrelay.metered.ca:80', 
+                                username: 'openrelayproject', 
+                                credential: 'openrelayproject' 
+                            },
+                            { 
+                                urls: 'turn:openrelay.metered.ca:443', 
+                                username: 'openrelayproject', 
+                                credential: 'openrelayproject' 
+                            }
+                        ]
+                    }
+                });
+                
+                peer.on('open', () => {
+                    statusMessage.textContent = 'Chamando...';
+                    currentCall = peer.call(unitId, localStream, { 
+                        metadata: { 
+                            visitorName: visitorName,
+                            deliveryType: deliveryType
+                        } 
+                    });
+                    
+                    if (!currentCall) { showError("Não foi possível iniciar a chamada."); return; }
+                    
+                    currentCall.on('stream', (remoteStream) => {
+                        statusMessage.textContent = 'Chamada conectada!';
+                        errorMessage.style.display = 'none';
+                        remoteVideo.srcObject = remoteStream;
+                        remoteVideoLabel.textContent = residentName;
+                        callingScreen.style.display = 'none';
+                        videoContainer.style.display = 'block';
+                    });
+                    
+                    currentCall.on('close', () => { endCall(); });
+                    currentCall.on('error', (err) => { showError("Falha na chamada. O morador pode estar offline."); });
+                    
+                    setTimeout(() => {
+                        if (currentCall && currentCall.open === false) {
+                            showError("O morador não atendeu. Tente novamente.");
+                        }
+                    }, 30000);
+                });
+                
+                peer.on('error', (err) => { showError("Erro de conexão. Verifique sua internet."); });
+                
+            } catch (err) {
+                showError('Permissão de câmera/microfone negada.');
+            }
+        }
+        
+        function showError(message) {
+            statusMessage.textContent = 'Falha na chamada';
+            errorMessage.textContent = message;
+            errorMessage.style.display = 'block';
+            cleanup();
+        }
+        
+        function endCall() {
+            cleanup();
+            document.body.innerHTML = `<div style="text-align: center; padding: 50px; color: white;"><h1>Chamada Encerrada</h1><p>Você pode fechar esta janela.</p></div>`;
+        }
+        
+        callBtn.addEventListener('click', startCallAttempt);
+        cancelBtn.addEventListener('click', () => { cleanup(); resetUI(); });
+        endCallBtn.addEventListener('click', endCall);
+        window.addEventListener('load', () => { visitorNameInput.focus(); });
+    </script>
+</body>
+</html>
